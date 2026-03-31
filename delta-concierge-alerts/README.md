@@ -231,7 +231,6 @@ pip install -r requirements.txt
 
 ## Running the Mock Demo (No AWS Account Needed)
 
-<<<<<<< HEAD
 The `demo_mock.py` script uses [moto](https://github.com/getmoto/moto) to spin up
 in-memory DynamoDB and SNS backends, then runs 7 scenarios through the full Lambda
 handler — including alert persistence and push notification delivery.
