@@ -34,7 +34,7 @@ def _mock_aws():
             Name="TestApp", Platform="GCM",
             Attributes={"PlatformCredential": "fake"},
         )["PlatformApplicationArn"]
-        endpoint = sns.create_platform_endpoint(
+        endpoint_arn = sns.create_platform_endpoint(
             PlatformApplicationArn=app_arn, Token="fake-token",
         )["EndpointArn"]
 
@@ -48,16 +48,19 @@ def _mock_aws():
         alert_store_mod.table = ddb.Table("ConciergeAlerts")
         notif_mod.sns_client = sns
 
-        # Store endpoint ARN for tests to use
-        _mock_aws.endpoint_arn = endpoint
-
         try:
-            yield
+            yield endpoint_arn
         finally:
             # Restore original clients so other test modules aren't affected
             alert_store_mod.dynamodb = orig_dynamodb
             alert_store_mod.table = orig_table
             notif_mod.sns_client = orig_sns_client
+
+
+@pytest.fixture
+def endpoint_arn(_mock_aws):
+    """Expose the moto SNS endpoint ARN created by _mock_aws."""
+    return _mock_aws
 
 
 def _base_event(endpoint_arn: str, **overrides) -> dict:
@@ -97,9 +100,9 @@ def _base_event(endpoint_arn: str, **overrides) -> dict:
 class TestHandlerEndToEnd:
     """Full round-trip: event → evaluations → DynamoDB + SNS → response."""
 
-    def test_alerts_persisted_and_response_shape(self):
+    def test_alerts_persisted_and_response_shape(self, endpoint_arn):
         """Missing visa for CN should persist alert and return CRITICAL."""
-        event = _base_event(_mock_aws.endpoint_arn)
+        event = _base_event(endpoint_arn)
         response = handler(event, None)
 
         assert response["statusCode"] == 200
@@ -113,9 +116,9 @@ class TestHandlerEndToEnd:
         assert len(visa_alerts) >= 1
         assert "No visa on file for CN" in visa_alerts[0]["reasons"]
 
-    def test_no_alerts_for_clean_traveler(self):
+    def test_no_alerts_for_clean_traveler(self, endpoint_arn):
         """US national to DE with valid passport → no alerts."""
-        event = _base_event(_mock_aws.endpoint_arn)
+        event = _base_event(endpoint_arn)
         event["profile"]["nationality"] = "US"
         event["itinerary"]["segments"] = [
             {
@@ -135,9 +138,9 @@ class TestHandlerEndToEnd:
         assert body["visa_status"] == "OK"
         assert body["alerts_sent"] == 0
 
-    def test_expired_passport_triggers_critical(self):
+    def test_expired_passport_triggers_critical(self, endpoint_arn):
         """Expired passport should return CRITICAL passport status."""
-        event = _base_event(_mock_aws.endpoint_arn)
+        event = _base_event(endpoint_arn)
         event["profile"]["passport_expiry"] = "2020-01-01"
 
         response = handler(event, None)
@@ -146,9 +149,9 @@ class TestHandlerEndToEnd:
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
 
-    def test_missing_passport_triggers_critical(self):
+    def test_missing_passport_triggers_critical(self, endpoint_arn):
         """Null passport fields should return CRITICAL passport status."""
-        event = _base_event(_mock_aws.endpoint_arn)
+        event = _base_event(endpoint_arn)
         event["profile"]["passport_number"] = None
         event["profile"]["passport_expiry"] = None
 
