@@ -77,8 +77,14 @@ def evaluate_visa_requirements(
             highest_severity = _max_severity(highest_severity, AlertSeverity.CRITICAL)
             continue
 
-        # Visa expires on or before travel date
-        if matching_visa.expiry_date <= segment.departure_date:
+        # Visa expires before travel date
+        if matching_visa.expiry_date < segment.departure_date:
+            reasons.append(f"Visa for {destination} expires before date of travel")
+            highest_severity = _max_severity(highest_severity, AlertSeverity.CRITICAL)
+            continue
+
+        # Visa expires on travel date
+        if matching_visa.expiry_date == segment.departure_date:
             reasons.append(f"Visa for {destination} expires on date of travel")
             highest_severity = _max_severity(highest_severity, AlertSeverity.WARNING)
             continue
@@ -106,11 +112,15 @@ def evaluate_visa_requirements(
 def _find_matching_visa(
     visa_records: list[VisaRecord], country_code: str
 ) -> VisaRecord | None:
-    """Find a visa record matching the given country code."""
-    for record in visa_records:
-        if record.country_code == country_code:
-            return record
-    return None
+    """Find the best visa record matching the given country code.
+
+    Returns the record with the latest expiry date to avoid selecting
+    an expired visa when a valid one exists.
+    """
+    matches = [r for r in visa_records if r.country_code == country_code]
+    if not matches:
+        return None
+    return max(matches, key=lambda r: r.expiry_date)
 
 
 def _max_severity(
