@@ -6,9 +6,19 @@ It parses the incoming request, dispatches to the appropriate service
 function, and returns a response in the format Bedrock Agents expect.
 """
 
+import decimal
 import json
 
 from src.handlers.lambda_handler import evaluate_itinerary
+
+
+class _DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles DynamoDB Decimal values."""
+
+    def default(self, o):
+        if isinstance(o, decimal.Decimal):
+            return int(o) if o == int(o) else float(o)
+        return super().default(o)
 from src.services.alert_store import (
     acknowledge_alert,
     get_active_alerts,
@@ -129,7 +139,12 @@ def _extract_request_body(event: dict) -> dict:
 
     body: dict = {}
     for prop in properties:
-        body[prop["name"]] = prop["value"]
+        value = prop["value"]
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        body[prop["name"]] = value
     return body
 
 
@@ -144,7 +159,7 @@ def _build_action_response(status_code: int, body: dict) -> dict:
             "httpStatusCode": status_code,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps(body),
+                    "body": json.dumps(body, cls=_DecimalEncoder),
                 }
             },
         },
@@ -162,7 +177,7 @@ def _build_response(event: dict, status_code: int, body: dict) -> dict:
             "httpStatusCode": status_code,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps(body),
+                    "body": json.dumps(body, cls=_DecimalEncoder),
                 }
             },
         },

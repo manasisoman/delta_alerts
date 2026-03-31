@@ -136,7 +136,11 @@ def handler(event: dict, context: object) -> dict:
 
 def _compute_ttl(itinerary: Itinerary) -> int:
     """Compute a DynamoDB TTL epoch timestamp 30 days after the last arrival."""
-    last_arrival = max(seg.arrival_date for seg in itinerary.segments)
+    last_arrival = (
+        max(seg.arrival_date for seg in itinerary.segments)
+        if itinerary.segments
+        else date.today()
+    )
     expiry_dt = datetime.combine(last_arrival, datetime.min.time()) + timedelta(
         days=_TTL_DAYS_AFTER_ARRIVAL
     )
