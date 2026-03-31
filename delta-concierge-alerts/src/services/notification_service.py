@@ -48,6 +48,7 @@ def send_push_notification(payload: NotificationPayload) -> dict:
 
     json_message = json.dumps(
         {
+            "default": payload.body,
             "APNS": apns_message,
             "GCM": gcm_message,
         }
