@@ -1,0 +1,270 @@
+openapi: 3.0.3
+info:
+  title: Delta Concierge Alert Actions
+  description: >
+    Action Group API for the Delta Concierge Bedrock Agent.
+    These actions allow the agent to query, acknowledge, and resolve
+    traveler document alerts, as well as evaluate itineraries on demand.
+  version: "1.0.0"
+
+paths:
+  /getActiveAlerts:
+    get:
+      operationId: getActiveAlerts
+      summary: Get active alerts for a SkyMiles member
+      description: >
+        Returns all alerts with status ACTIVE or ACKNOWLEDGED for the
+        given SkyMiles member. Use this to check what issues a traveler
+        currently needs to address.
+      parameters:
+        - name: skymiles_number
+          in: query
+          required: true
+          description: The SkyMiles member number to look up alerts for.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of active alerts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Alert"
+                  count:
+                    type: integer
+                    description: Total number of active alerts returned.
+
+  /acknowledgeAlert:
+    post:
+      operationId: acknowledgeAlert
+      summary: Acknowledge an alert
+      description: >
+        Marks the specified alert as ACKNOWLEDGED, indicating the traveler
+        is aware of the issue but has not yet resolved it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - skymiles_number
+                - alert_id
+              properties:
+                skymiles_number:
+                  type: string
+                  description: The SkyMiles member number.
+                alert_id:
+                  type: string
+                  description: The unique identifier of the alert to acknowledge.
+      responses:
+        "200":
+          description: Alert acknowledged successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /resolveAlert:
+    post:
+      operationId: resolveAlert
+      summary: Resolve an alert
+      description: >
+        Marks the specified alert as RESOLVED with a resolution description.
+        Use this when the traveler has taken action to address the issue
+        (e.g., renewed passport, obtained visa).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - skymiles_number
+                - alert_id
+                - resolution
+              properties:
+                skymiles_number:
+                  type: string
+                  description: The SkyMiles member number.
+                alert_id:
+                  type: string
+                  description: The unique identifier of the alert to resolve.
+                resolution:
+                  type: string
+                  description: >
+                    A human-readable description of how the alert was resolved
+                    (e.g., "Passport renewed on 2026-03-15").
+      responses:
+        "200":
+          description: Alert resolved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /evaluateItinerary:
+    post:
+      operationId: evaluateItinerary
+      summary: Evaluate a traveler's itinerary for document issues
+      description: >
+        Runs the full passport and visa evaluation pipeline against the
+        provided profile and itinerary. Returns any alerts generated.
+        This is the same logic used by the primary Lambda handler.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - profile
+                - itinerary
+              properties:
+                profile:
+                  $ref: "#/components/schemas/Profile"
+                itinerary:
+                  $ref: "#/components/schemas/Itinerary"
+                requirements_override:
+                  type: object
+                  nullable: true
+                  description: Optional country requirement overrides.
+      responses:
+        "200":
+          description: Evaluation results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts_sent:
+                    type: integer
+                  passport_status:
+                    type: string
+                  visa_status:
+                    type: string
+
+components:
+  schemas:
+    Alert:
+      type: object
+      properties:
+        alert_id:
+          type: string
+        skymiles_number:
+          type: string
+        alert_type:
+          type: string
+          enum: [PASSPORT, VISA]
+        severity:
+          type: string
+          enum: [CRITICAL, WARNING, INFO]
+        status:
+          type: string
+          enum: [ACTIVE, ACKNOWLEDGED, RESOLVED, EXPIRED]
+        reasons:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        itinerary_ref:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolution:
+          type: string
+          nullable: true
+
+    Profile:
+      type: object
+      required:
+        - skymiles_number
+        - first_name
+        - last_name
+        - nationality
+        - endpoint_arn
+      properties:
+        skymiles_number:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        nationality:
+          type: string
+          description: ISO 3166-1 alpha-2 country code.
+        passport_number:
+          type: string
+          nullable: true
+        passport_expiry:
+          type: string
+          format: date
+          nullable: true
+        endpoint_arn:
+          type: string
+        visa_records:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisaRecord"
+
+    VisaRecord:
+      type: object
+      properties:
+        country_code:
+          type: string
+        visa_type:
+          type: string
+        issue_date:
+          type: string
+          format: date
+        expiry_date:
+          type: string
+          format: date
+        visa_number:
+          type: string
+
+    Itinerary:
+      type: object
+      required:
+        - confirmation_number
+        - segments
+      properties:
+        confirmation_number:
+          type: string
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlightSegment"
+
+    FlightSegment:
+      type: object
+      properties:
+        flight_number:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        departure_date:
+          type: string
+          format: date
+        arrival_date:
+          type: string
+          format: date
+        is_layover:
+          type: boolean
