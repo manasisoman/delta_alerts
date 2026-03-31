@@ -38,6 +38,11 @@ def _mock_aws():
             PlatformApplicationArn=app_arn, Token="fake-token",
         )["EndpointArn"]
 
+        # Save original module-level boto3 clients
+        orig_dynamodb = alert_store_mod.dynamodb
+        orig_table = alert_store_mod.table
+        orig_sns_client = notif_mod.sns_client
+
         # Patch module-level boto3 clients to use the moto context
         alert_store_mod.dynamodb = ddb
         alert_store_mod.table = ddb.Table("ConciergeAlerts")
@@ -46,7 +51,13 @@ def _mock_aws():
         # Store endpoint ARN for tests to use
         _mock_aws.endpoint_arn = endpoint
 
-        yield
+        try:
+            yield
+        finally:
+            # Restore original clients so other test modules aren't affected
+            alert_store_mod.dynamodb = orig_dynamodb
+            alert_store_mod.table = orig_table
+            notif_mod.sns_client = orig_sns_client
 
 
 def _base_event(endpoint_arn: str, **overrides) -> dict:
