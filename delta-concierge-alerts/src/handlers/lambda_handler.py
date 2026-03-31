@@ -1,7 +1,7 @@
 """AWS Lambda handler for the Delta Concierge Alert system."""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from src.data.country_requirements import COUNTRY_REQUIREMENTS
 from src.evaluators.passport_evaluator import evaluate_passport_expiry
@@ -9,6 +9,7 @@ from src.evaluators.visa_evaluator import evaluate_visa_requirements
 from src.models.types import (
     AlertRecord,
     AlertSeverity,
+    AlertStatus,
     AlertType,
     FlightSegment,
     Itinerary,
@@ -19,6 +20,8 @@ from src.models.types import (
 )
 from src.services.alert_store import save_alert
 from src.services.notification_service import send_push_notification
+
+_TTL_DAYS_AFTER_ARRIVAL = 30
 
 
 def handler(event: dict, context: object) -> dict:
@@ -55,6 +58,9 @@ def handler(event: dict, context: object) -> dict:
     passport_eval = evaluate_passport_expiry(profile, itinerary, requirements)
     visa_eval = evaluate_visa_requirements(profile, itinerary, requirements)
 
+    # Compute TTL: 30 days after the last segment's arrival date
+    ttl = _compute_ttl(itinerary)
+
     alerts_sent = 0
 
     # Process passport evaluation
@@ -67,6 +73,8 @@ def handler(event: dict, context: object) -> dict:
             reasons=passport_eval.reasons,
             created_at=datetime.utcnow().isoformat(),
             itinerary_ref=itinerary.confirmation_number,
+            status=AlertStatus.ACTIVE,
+            ttl=ttl,
         )
         save_alert(alert_record)
 
@@ -94,6 +102,8 @@ def handler(event: dict, context: object) -> dict:
             reasons=visa_eval.reasons,
             created_at=datetime.utcnow().isoformat(),
             itinerary_ref=itinerary.confirmation_number,
+            status=AlertStatus.ACTIVE,
+            ttl=ttl,
         )
         save_alert(alert_record)
 
@@ -122,6 +132,34 @@ def handler(event: dict, context: object) -> dict:
             "visa_status": visa_status,
         },
     }
+
+
+def _compute_ttl(itinerary: Itinerary) -> int:
+    """Compute a DynamoDB TTL epoch timestamp 30 days after the last arrival."""
+    last_arrival = (
+        max(seg.arrival_date for seg in itinerary.segments)
+        if itinerary.segments
+        else date.today()
+    )
+    expiry_dt = datetime.combine(last_arrival, datetime.min.time()) + timedelta(
+        days=_TTL_DAYS_AFTER_ARRIVAL
+    )
+    return int(expiry_dt.timestamp())
+
+
+def evaluate_itinerary(event: dict) -> dict:
+    """Shared evaluation logic usable by both the Lambda handler and Bedrock Agent.
+
+    Accepts a raw event dict and returns the handler response. This is
+    factored out so the Bedrock Action Group handler can reuse it.
+
+    Args:
+        event: The Lambda event payload matching the expected schema.
+
+    Returns:
+        A response dict with statusCode and a body summarizing results.
+    """
+    return handler(event, None)
 
 
 def _parse_profile(data: dict) -> SkyMilesProfile:

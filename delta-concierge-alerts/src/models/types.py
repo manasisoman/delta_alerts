@@ -21,6 +21,15 @@ class AlertType(Enum):
     VISA = "VISA"
 
 
+class AlertStatus(Enum):
+    """Lifecycle status of an alert."""
+
+    ACTIVE = "ACTIVE"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    RESOLVED = "RESOLVED"
+    EXPIRED = "EXPIRED"
+
+
 @dataclass
 class ValidationError:
     """Represents a validation error for a travel document field."""
@@ -84,6 +93,10 @@ class TravelDocRequirements:
     transit_visa_required: bool
     passport_validity_months: int
     visa_exempt_nationalities: list[str]
+    embassy_url: Optional[str] = None
+    evisa_portal_url: Optional[str] = None
+    estimated_processing_days: Optional[int] = None
+    entry_form_url: Optional[str] = None
 
 
 @dataclass
@@ -121,6 +134,10 @@ class AlertRecord:
     reasons: list[str]
     created_at: str
     itinerary_ref: str
+    status: AlertStatus = AlertStatus.ACTIVE
+    resolved_at: Optional[str] = None
+    resolution: Optional[str] = None
+    ttl: Optional[int] = None
 
 
 @dataclass
