@@ -149,3 +149,33 @@ class NotificationPayload:
     title: str
     body: str
     push_data: dict
+
+
+@dataclass
+class GroupItinerary:
+    """A group travel itinerary with multiple travelers sharing the same segments."""
+
+    confirmation_number: str
+    segments: list[FlightSegment]
+    travelers: list[SkyMilesProfile]
+    primary_traveler: str  # skymiles_number of the booking owner
+
+
+@dataclass
+class TravelerAlertSummary:
+    """Alert evaluation results for a single traveler within a group."""
+
+    skymiles_number: str
+    first_name: str
+    last_name: str
+    passport_result: PassportEvaluation
+    visa_result: VisaEvaluation
+
+
+@dataclass
+class GroupEvaluationResult:
+    """Aggregated evaluation results for all travelers in a group itinerary."""
+
+    confirmation_number: str
+    traveler_summaries: list[TravelerAlertSummary]
+    group_severity: AlertSeverity  # highest severity across all travelers
