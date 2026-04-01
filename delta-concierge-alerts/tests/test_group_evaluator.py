@@ -104,7 +104,7 @@ class TestSeverityEscalation:
     def test_first_traveler_sets_severity_then_second_escalates(self, base_requirements):
         """First traveler produces WARNING, second escalates to CRITICAL."""
         traveler_a = make_profile(
-            nationality="IN",
+            nationality="US",
             passport_expiry=date(2026, 10, 15),
         )
         traveler_b = make_profile(
