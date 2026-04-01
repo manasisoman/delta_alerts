@@ -47,6 +47,41 @@ def base_requirements() -> dict[str, TravelDocRequirements]:
             passport_validity_months=6,
             visa_exempt_nationalities=["US", "GB"],
         ),
+        "CO": TravelDocRequirements(
+            country_code="CO",
+            requires_visa=True,
+            transit_visa_required=False,
+            passport_validity_months=3,
+            visa_exempt_nationalities=["US", "GB", "CA"],
+        ),
+        "NZ": TravelDocRequirements(
+            country_code="NZ",
+            requires_visa=True,
+            transit_visa_required=False,
+            passport_validity_months=3,
+            visa_exempt_nationalities=["US", "GB", "CA", "AU"],
+        ),
+        "IN": TravelDocRequirements(
+            country_code="IN",
+            requires_visa=True,
+            transit_visa_required=True,
+            passport_validity_months=6,
+            visa_exempt_nationalities=["NP", "BT"],
+        ),
+        "TH": TravelDocRequirements(
+            country_code="TH",
+            requires_visa=True,
+            transit_visa_required=False,
+            passport_validity_months=6,
+            visa_exempt_nationalities=["US", "GB", "CA"],
+        ),
+        "PA": TravelDocRequirements(
+            country_code="PA",
+            requires_visa=True,
+            transit_visa_required=False,
+            passport_validity_months=3,
+            visa_exempt_nationalities=["US", "GB", "CA"],
+        ),
     }
 
 

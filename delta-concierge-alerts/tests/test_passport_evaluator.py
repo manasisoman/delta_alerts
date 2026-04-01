@@ -47,7 +47,7 @@ class TestPassportExpired:
 
 
 class TestPassportBelowCountryMinimum:
-    """Passport valid but under the destination's required validity window."""
+    """Passport valid but under the destination's required validity window → CRITICAL."""
 
     def test_below_3_month_schengen_requirement(self, base_requirements):
         # Passport expires 2 months after departure to Germany (needs 3)
@@ -58,7 +58,7 @@ class TestPassportBelowCountryMinimum:
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
 
         assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.WARNING
+        assert result.severity == AlertSeverity.CRITICAL
         assert any("does not meet DE's 3-month" in r for r in result.reasons)
 
     def test_below_6_month_requirement(self, base_requirements):
@@ -70,7 +70,7 @@ class TestPassportBelowCountryMinimum:
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
 
         assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.WARNING
+        assert result.severity == AlertSeverity.CRITICAL
         assert any("does not meet CN's 6-month" in r for r in result.reasons)
 
 
