@@ -178,4 +178,4 @@ class GroupEvaluationResult:
 
     confirmation_number: str
     traveler_summaries: list[TravelerAlertSummary]
-    group_severity: AlertSeverity  # highest severity across all travelers
+    group_severity: Optional[AlertSeverity]  # highest severity across all travelers, None when clean

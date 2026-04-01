@@ -163,7 +163,7 @@ def group_handler(event: dict, context: object) -> dict:
         "body": {
             "confirmation_number": group.confirmation_number,
             "total_alerts_sent": alerts_sent,
-            "group_severity": group_result.group_severity.value,
+            "group_severity": group_result.group_severity.value if group_result.group_severity else "OK",
             "traveler_results": traveler_results,
         },
     }

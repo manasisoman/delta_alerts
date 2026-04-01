@@ -40,7 +40,7 @@ def evaluate_group_itinerary(
         severity across the entire group.
     """
     summaries: list[TravelerAlertSummary] = []
-    highest_severity = AlertSeverity.INFO
+    highest_severity: AlertSeverity | None = None
 
     # Build a shared itinerary object for the segments
     itinerary = Itinerary(
@@ -63,7 +63,7 @@ def evaluate_group_itinerary(
         # Track highest severity across all travelers
         for result in [passport_result, visa_result]:
             if result.severity is not None:
-                if _SEVERITY_RANK.get(result.severity, 0) > _SEVERITY_RANK.get(highest_severity, 0):
+                if highest_severity is None or _SEVERITY_RANK[result.severity] > _SEVERITY_RANK[highest_severity]:
                     highest_severity = result.severity
 
         summaries.append(TravelerAlertSummary(

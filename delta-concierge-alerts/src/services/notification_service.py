@@ -122,7 +122,7 @@ def send_group_notification(
                 "sound": "default",
             },
             "confirmation_number": group_result.confirmation_number,
-            "group_severity": group_result.group_severity.value,
+            "group_severity": group_result.group_severity.value if group_result.group_severity else "OK",
         }
     )
 
@@ -131,7 +131,7 @@ def send_group_notification(
             "notification": {"title": title, "body": body},
             "data": {
                 "confirmation_number": group_result.confirmation_number,
-                "group_severity": group_result.group_severity.value,
+                "group_severity": group_result.group_severity.value if group_result.group_severity else "OK",
             },
         }
     )
