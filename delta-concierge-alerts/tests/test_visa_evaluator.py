@@ -143,3 +143,148 @@ class TestMultipleVisaRecords:
 
         assert result.is_alert_required is False
         assert result.severity is None
+
+
+class TestNoVisaRequired:
+    """Country that does not require a visa → segment skipped, no alert."""
+
+    def test_no_visa_required_skips_evaluation(self):
+        from src.models.types import TravelDocRequirements
+
+        reqs = {
+            "MX": TravelDocRequirements(
+                country_code="MX",
+                requires_visa=False,
+                transit_visa_required=False,
+                passport_validity_months=6,
+                visa_exempt_nationalities=[],
+            ),
+        }
+        profile = make_profile(nationality="IN", visa_records=[])
+        segment = make_segment(destination="MX", departure=date(2026, 9, 1))
+        itinerary = make_itinerary(segment)
+
+        result = evaluate_visa_requirements(profile, itinerary, reqs)
+
+        assert result.is_alert_required is False
+        assert result.severity is None
+        assert result.reasons == []
+
+
+class TestVisaExpiresWithinWarningWindow:
+    """Visa expires within VISA_EXPIRY_WARNING_DAYS of travel → INFO."""
+
+    def test_visa_expires_within_30_days_of_travel(self, base_requirements):
+        visa = VisaRecord(
+            country_code="CN", visa_type="TOURIST",
+            issue_date=date(2025, 1, 1), expiry_date=date(2026, 9, 20),
+            visa_number="V004",
+        )
+        profile = make_profile(nationality="IN", visa_records=[visa])
+        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
+        itinerary = make_itinerary(segment)
+
+        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
+
+        assert result.is_alert_required is True
+        assert result.severity == AlertSeverity.INFO
+        assert "Visa for CN expires within 30 days of travel" in result.reasons
+
+    def test_visa_expires_exactly_on_warning_boundary(self, base_requirements):
+        """Visa expiry == departure + 30 days → still INFO (boundary inclusive)."""
+        visa = VisaRecord(
+            country_code="CN", visa_type="TOURIST",
+            issue_date=date(2025, 1, 1), expiry_date=date(2026, 10, 1),
+            visa_number="V005",
+        )
+        profile = make_profile(nationality="IN", visa_records=[visa])
+        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
+        itinerary = make_itinerary(segment)
+
+        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
+
+        assert result.is_alert_required is True
+        assert result.severity == AlertSeverity.INFO
+
+
+class TestSeverityConsolidation:
+    """Consolidated severity keeps the highest across multiple segments."""
+
+    def test_warning_upgraded_to_critical(self):
+        """First segment WARNING (expires on travel date), second segment CRITICAL (no visa).
+
+        Exercises _max_severity upgrading from a non-None current to a higher
+        severity (line 132-133: new > current → return new).
+        """
+        from src.models.types import TravelDocRequirements
+
+        reqs = {
+            "JP": TravelDocRequirements(
+                country_code="JP",
+                requires_visa=True,
+                transit_visa_required=False,
+                passport_validity_months=6,
+                visa_exempt_nationalities=[],
+            ),
+            "CN": TravelDocRequirements(
+                country_code="CN",
+                requires_visa=True,
+                transit_visa_required=True,
+                passport_validity_months=6,
+                visa_exempt_nationalities=[],
+            ),
+        }
+        jp_visa = VisaRecord(
+            country_code="JP", visa_type="TOURIST",
+            issue_date=date(2025, 1, 1), expiry_date=date(2026, 9, 5),
+            visa_number="V006",
+        )
+        profile = make_profile(nationality="IN", visa_records=[jp_visa])
+        seg_jp = make_segment(destination="JP", departure=date(2026, 9, 5), flight_number="DL200")
+        seg_cn = make_segment(destination="CN", departure=date(2026, 9, 10), flight_number="DL201")
+        itinerary = make_itinerary(seg_jp, seg_cn)
+
+        result = evaluate_visa_requirements(profile, itinerary, reqs)
+
+        assert result.severity == AlertSeverity.CRITICAL
+        assert "Visa for JP expires on date of travel" in result.reasons
+        assert "No visa on file for CN" in result.reasons
+
+    def test_critical_not_downgraded_by_info(self):
+        """First segment CRITICAL (no visa), second segment INFO (expiring soon).
+
+        Exercises _max_severity keeping current when new < current
+        (line 134: return current).
+        """
+        from src.models.types import TravelDocRequirements
+
+        reqs = {
+            "CN": TravelDocRequirements(
+                country_code="CN",
+                requires_visa=True,
+                transit_visa_required=True,
+                passport_validity_months=6,
+                visa_exempt_nationalities=[],
+            ),
+            "JP": TravelDocRequirements(
+                country_code="JP",
+                requires_visa=True,
+                transit_visa_required=False,
+                passport_validity_months=6,
+                visa_exempt_nationalities=[],
+            ),
+        }
+        jp_visa = VisaRecord(
+            country_code="JP", visa_type="TOURIST",
+            issue_date=date(2025, 1, 1), expiry_date=date(2026, 9, 20),
+            visa_number="V007",
+        )
+        profile = make_profile(nationality="IN", visa_records=[jp_visa])
+        seg_cn = make_segment(destination="CN", departure=date(2026, 9, 1), flight_number="DL200")
+        seg_jp = make_segment(destination="JP", departure=date(2026, 9, 5), flight_number="DL201")
+        itinerary = make_itinerary(seg_cn, seg_jp)
+
+        result = evaluate_visa_requirements(profile, itinerary, reqs)
+
+        assert result.severity == AlertSeverity.CRITICAL
+        assert len(result.reasons) == 2
