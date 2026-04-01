@@ -148,6 +148,40 @@ def resolve_alerts_for_itinerary(
     return resolved_count
 
 
+def get_alerts_by_itinerary(confirmation_number: str) -> list[dict]:
+    """Query all alerts for a given itinerary confirmation number.
+
+    Uses a GSI named ``itinerary-ref-index`` on the ``itinerary_ref``
+    attribute to find alerts across all travelers sharing the same booking.
+
+    Note:
+        This requires a DynamoDB Global Secondary Index named
+        ``itinerary-ref-index`` with partition key ``itinerary_ref``.
+    """
+    response = table.query(
+        IndexName="itinerary-ref-index",
+        KeyConditionExpression=Key("itinerary_ref").eq(confirmation_number),
+    )
+    return response.get("Items", [])
+
+
+def get_group_alert_summary(confirmation_number: str) -> dict[str, list[dict]]:
+    """Get alerts grouped by skymiles_number for a booking.
+
+    Args:
+        confirmation_number: The itinerary confirmation number to query.
+
+    Returns:
+        A dict mapping each traveler's skymiles_number to their list of alerts.
+    """
+    all_alerts = get_alerts_by_itinerary(confirmation_number)
+    grouped: dict[str, list[dict]] = {}
+    for alert in all_alerts:
+        sm = alert["skymiles_number"]
+        grouped.setdefault(sm, []).append(alert)
+    return grouped
+
+
 def expire_stale_alerts(skymiles_number: str) -> int:
     """Mark alerts past their TTL as EXPIRED.
 

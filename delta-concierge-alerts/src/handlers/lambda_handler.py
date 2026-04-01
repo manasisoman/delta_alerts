@@ -27,9 +27,9 @@ _TTL_DAYS_AFTER_ARRIVAL = 30
 def handler(event: dict, context: object) -> dict:
     """Lambda entry point for evaluating travel document alerts.
 
-    Deserializes the incoming event into domain objects, runs passport and
-    visa evaluations, persists any alerts to DynamoDB, and sends push
-    notifications for actionable alerts.
+    Supports both single-traveler and group itinerary payloads.  When the
+    event contains a ``travelers`` key the request is delegated to the group
+    handler; otherwise the original single-traveler flow is executed.
 
     Args:
         event: The Lambda event payload matching the expected schema.
@@ -38,6 +38,11 @@ def handler(event: dict, context: object) -> dict:
     Returns:
         A response dict with statusCode and a body summarizing results.
     """
+    if "travelers" in event:
+        from src.handlers.group_lambda_handler import group_handler
+
+        return group_handler(event, context)
+
     profile = _parse_profile(event["profile"])
     itinerary = _parse_itinerary(event["itinerary"])
 
