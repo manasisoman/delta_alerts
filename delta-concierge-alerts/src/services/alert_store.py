@@ -111,6 +111,43 @@ def get_active_alerts(skymiles_number: str) -> list[dict]:
     return response.get("Items", [])
 
 
+def resolve_alerts_for_itinerary(
+    skymiles_number: str, confirmation_number: str, resolution: str
+) -> int:
+    """Resolve all active/acknowledged alerts for a specific itinerary.
+
+    Queries the member's alerts by partition key and filters for those
+    matching the given ``confirmation_number`` (stored as ``itinerary_ref``)
+    with a status of ACTIVE or ACKNOWLEDGED.  Each matching alert is
+    individually resolved via :func:`resolve_alert`.
+
+    Args:
+        skymiles_number: The member's SkyMiles number (partition key).
+        confirmation_number: The itinerary confirmation number to match
+            against the ``itinerary_ref`` attribute.
+        resolution: A human-readable description applied to each resolved
+            alert (e.g. ``"Auto-resolved: itinerary changed, re-evaluating"``).
+
+    Returns:
+        The number of alerts that were resolved.
+    """
+    response = table.query(
+        KeyConditionExpression=Key("skymiles_number").eq(skymiles_number),
+        FilterExpression=(
+            Attr("itinerary_ref").eq(confirmation_number)
+            & Attr("status").is_in(
+                [AlertStatus.ACTIVE.value, AlertStatus.ACKNOWLEDGED.value]
+            )
+        ),
+    )
+    matching_alerts = response.get("Items", [])
+    resolved_count = 0
+    for alert in matching_alerts:
+        resolve_alert(skymiles_number, alert["alert_id"], resolution)
+        resolved_count += 1
+    return resolved_count
+
+
 def expire_stale_alerts(skymiles_number: str) -> int:
     """Mark alerts past their TTL as EXPIRED.
 
