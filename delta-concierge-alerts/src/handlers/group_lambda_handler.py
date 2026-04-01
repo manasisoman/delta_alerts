@@ -1,11 +1,11 @@
 """AWS Lambda handler for group itinerary evaluations in Delta Concierge Alerts."""
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from src.data.country_requirements import COUNTRY_REQUIREMENTS
 from src.evaluators.group_evaluator import evaluate_group_itinerary
-from src.handlers.lambda_handler import _parse_profile, _parse_itinerary, _compute_ttl
+from src.handlers.lambda_handler import _compute_ttl, _parse_profile
 from src.models.types import (
     AlertRecord,
     AlertSeverity,
@@ -17,15 +17,12 @@ from src.models.types import (
     NotificationPayload,
     SkyMilesProfile,
     TravelDocRequirements,
-    VisaRecord,
 )
 from src.services.alert_store import save_alert
 from src.services.notification_service import (
     send_group_notification,
     send_push_notification,
 )
-
-_TTL_DAYS_AFTER_ARRIVAL = 30
 
 
 def group_handler(event: dict, context: object) -> dict:
