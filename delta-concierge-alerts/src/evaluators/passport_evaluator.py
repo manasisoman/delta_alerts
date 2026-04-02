@@ -96,7 +96,7 @@ def evaluate_passport_expiry(
                 f"Passport does not meet {destination}'s {required_months}-month "
                 f"validity requirement for {segment.flight_number}"
             )
-            highest_severity = _max_severity(highest_severity, AlertSeverity.WARNING)
+            highest_severity = _max_severity(highest_severity, AlertSeverity.CRITICAL)
             continue
 
         # Passport is valid but expiring within 6 months of travel
