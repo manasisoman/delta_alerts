@@ -119,8 +119,8 @@ See [`docs/bedrock-agent-setup.md`](docs/bedrock-agent-setup.md) and [`docs/acti
 
 | Severity | Meaning |
 |----------|---------|
-| **CRITICAL** | Missing documents, expired passport/visa, or passport expires before travel |
-| **WARNING** | Passport doesn't meet destination's validity window, or visa expires on travel date |
+| **CRITICAL** | Missing documents, expired passport/visa, passport expires before travel, or passport doesn't meet destination's validity window |
+| **WARNING** | Visa expires on travel date |
 | **INFO** | Passport expiring within 6 months, or visa expiring within 30 days of travel |
 
 ## Invoking the Lambda Handler Locally
