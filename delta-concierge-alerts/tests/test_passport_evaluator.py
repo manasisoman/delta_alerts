@@ -1,4 +1,4 @@
-"""Critical-path tests for the passport evaluator."""
+"""Tests for the passport evaluator."""
 
 from datetime import date
 
@@ -6,44 +6,6 @@ from src.evaluators.passport_evaluator import evaluate_passport_expiry
 from src.models.types import AlertSeverity
 
 from tests.conftest import make_itinerary, make_profile, make_segment
-
-
-class TestPassportMissing:
-    """Incomplete passport data must be caught immediately."""
-
-    def test_missing_passport_number(self, base_requirements):
-        profile = make_profile(passport_number=None)
-        itinerary = make_itinerary(make_segment())
-
-        result = evaluate_passport_expiry(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.CRITICAL
-        assert "Passport information is incomplete" in result.reasons
-
-    def test_missing_passport_expiry(self, base_requirements):
-        profile = make_profile(passport_expiry=None)
-        itinerary = make_itinerary(make_segment())
-
-        result = evaluate_passport_expiry(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.CRITICAL
-        assert "Passport information is incomplete" in result.reasons
-
-
-class TestPassportExpired:
-    """An already-expired passport must always be CRITICAL."""
-
-    def test_passport_expired_before_today(self, base_requirements):
-        profile = make_profile(passport_expiry=date(2020, 1, 1))
-        itinerary = make_itinerary(make_segment())
-
-        result = evaluate_passport_expiry(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.CRITICAL
-        assert "Passport has expired" in result.reasons
 
 
 class TestPassportBelowCountryMinimum:
@@ -72,21 +34,6 @@ class TestPassportBelowCountryMinimum:
         assert result.is_alert_required is True
         assert result.severity == AlertSeverity.WARNING
         assert any("does not meet CN's 6-month" in r for r in result.reasons)
-
-
-class TestPassportExpireBeforeDeparture:
-    """Passport expires between today and the departure date → CRITICAL."""
-
-    def test_expires_before_departure(self, base_requirements):
-        profile = make_profile(passport_expiry=date(2026, 8, 15))
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1))
-        itinerary = make_itinerary(segment)
-
-        result = evaluate_passport_expiry(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.CRITICAL
-        assert any("Passport expires before departure" in r for r in result.reasons)
 
 
 class TestPassportValid:

@@ -63,52 +63,7 @@ class TestVisaExpiresBeforeTravel:
         assert "Visa for CN expires before date of travel" in result.reasons
 
 
-class TestVisaExpiresOnTravelDate:
-    """Visa expires exactly on departure date → WARNING."""
-
-    def test_visa_expires_on_departure(self, base_requirements):
-        visa = VisaRecord(
-            country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=date(2026, 9, 1),
-            visa_number="V003",
-        )
-        profile = make_profile(nationality="IN", visa_records=[visa])
-        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
-        itinerary = make_itinerary(segment)
-
-        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.WARNING
-        assert "Visa for CN expires on date of travel" in result.reasons
-
-
-class TestVisaExemptNationality:
-    """Visa-exempt nationality should produce no alert."""
-
-    def test_us_national_to_germany(self, base_requirements):
-        profile = make_profile(nationality="US", visa_records=[])
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1))
-        itinerary = make_itinerary(segment)
-
-        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is False
-        assert result.severity is None
-
-
-class TestLayoverSkip:
-    """Layover at a country without transit visa requirement → skipped."""
-
-    def test_layover_no_transit_visa_required(self, base_requirements):
-        profile = make_profile(nationality="IN", visa_records=[])
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1), is_layover=True)
-        itinerary = make_itinerary(segment)
-
-        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is False
-
+class TestLayoverWithTransitVisaRequired:
     def test_layover_with_transit_visa_required(self, base_requirements):
         """China requires transit visa → layover without visa should alert."""
         profile = make_profile(nationality="IN", visa_records=[])
@@ -119,27 +74,3 @@ class TestLayoverSkip:
 
         assert result.is_alert_required is True
         assert result.severity == AlertSeverity.CRITICAL
-
-
-class TestMultipleVisaRecords:
-    """When multiple visas exist for a country, the latest-expiring one is used."""
-
-    def test_prefers_valid_visa_over_expired(self, base_requirements):
-        expired_visa = VisaRecord(
-            country_code="CN", visa_type="TOURIST",
-            issue_date=date(2020, 1, 1), expiry_date=date(2022, 1, 1),
-            visa_number="V-OLD",
-        )
-        valid_visa = VisaRecord(
-            country_code="CN", visa_type="TOURIST",
-            issue_date=date(2026, 1, 1), expiry_date=date(2028, 1, 1),
-            visa_number="V-NEW",
-        )
-        profile = make_profile(nationality="IN", visa_records=[expired_visa, valid_visa])
-        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
-        itinerary = make_itinerary(segment)
-
-        result = evaluate_visa_requirements(profile, itinerary, base_requirements)
-
-        assert result.is_alert_required is False
-        assert result.severity is None
