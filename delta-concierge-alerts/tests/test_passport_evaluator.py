@@ -20,7 +20,7 @@ class TestPassportBelowCountryMinimum:
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
 
         assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.WARNING
+        assert result.severity == AlertSeverity.CRITICAL
         assert any("does not meet DE's 3-month" in r for r in result.reasons)
 
     def test_below_6_month_requirement(self, base_requirements):
@@ -32,7 +32,7 @@ class TestPassportBelowCountryMinimum:
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
 
         assert result.is_alert_required is True
-        assert result.severity == AlertSeverity.WARNING
+        assert result.severity == AlertSeverity.CRITICAL
         assert any("does not meet CN's 6-month" in r for r in result.reasons)
 
 
@@ -56,7 +56,7 @@ class TestSeverityConsolidation:
     """Highest severity across multiple segments wins."""
 
     def test_critical_overrides_warning(self, base_requirements):
-        # Segment 1: DE → passport under 3-month min → WARNING
+        # Segment 1: DE → passport under 3-month min → CRITICAL
         # Segment 2: CN → passport expires before departure → CRITICAL
         profile = make_profile(passport_expiry=date(2026, 10, 15))
         seg_de = make_segment(destination="DE", departure=date(2026, 9, 1), flight_number="DL100")
