@@ -229,7 +229,183 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-## AWS Resources Required
+## Running the Mock Demo (No AWS Account Needed)
+
+The `demo_mock.py` script uses [moto](https://github.com/getmoto/moto) to spin up
+in-memory DynamoDB and SNS backends, then runs 7 scenarios through the full Lambda
+handler — including alert persistence and push notification delivery.
+
+```bash
+cd delta-concierge-alerts
+pip install -r requirements.txt "moto[dynamodb,sns]"
+python demo_mock.py
+```
+
+### Included Scenarios
+
+| # | Scenario | Expected Passport | Expected Visa |
+|---|----------|-------------------|---------------|
+| 1 | Expired passport | CRITICAL | CRITICAL |
+| 2 | Passport below DE's 3-month rule | WARNING | OK |
+| 3 | Missing visa for China (Indian national) | OK | CRITICAL |
+| 4 | Visa-exempt: US national → Germany | OK | OK |
+| 5 | Multi-segment: DE layover → CN → JP | OK | CRITICAL |
+| 6 | Visa expires before travel date | OK | CRITICAL |
+| 7 | No passport information on file | CRITICAL | OK |
+
+The script also prints all persisted DynamoDB alert records at the end.
+
+## AWS Setup for Real Deployment
+
+To deploy this as a real Lambda function talking to actual AWS services, you need
+three resources: a DynamoDB table, an SNS platform application, and an IAM role.
+
+### 1. Create the DynamoDB Table
+
+```bash
+aws dynamodb create-table \
+  --table-name ConciergeAlerts \
+  --key-schema \
+    AttributeName=skymiles_number,KeyType=HASH \
+    AttributeName=alert_id,KeyType=RANGE \
+  --attribute-definitions \
+    AttributeName=skymiles_number,AttributeType=S \
+    AttributeName=alert_id,AttributeType=S \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1
+```
+
+### 2. Create the SNS Platform Application
+
+For **iOS (APNS)**:
+```bash
+aws sns create-platform-application \
+  --name DeltaConciergeAPNS \
+  --platform APNS \
+  --attributes \
+    PlatformCredential=<YOUR_APNS_PRIVATE_KEY>,\
+    PlatformPrincipal=<YOUR_APNS_CERTIFICATE> \
+  --region us-east-1
+```
+
+For **Android (FCM/GCM)**:
+```bash
+aws sns create-platform-application \
+  --name DeltaConciergeGCM \
+  --platform GCM \
+  --attributes PlatformCredential=<YOUR_FCM_SERVER_KEY> \
+  --region us-east-1
+```
+
+Then register device endpoints:
+```bash
+aws sns create-platform-endpoint \
+  --platform-application-arn <PLATFORM_APP_ARN> \
+  --token <DEVICE_TOKEN> \
+  --region us-east-1
+```
+
+The returned `EndpointArn` is what goes into `profile.endpoint_arn` in the event payload.
+
+### 3. Create the Lambda IAM Role
+
+```bash
+# Create the role
+aws iam create-role \
+  --role-name DeltaConciergeAlertRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "lambda.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+# Attach basic Lambda execution (CloudWatch Logs)
+aws iam attach-role-policy \
+  --role-name DeltaConciergeAlertRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+# Create and attach inline policy for DynamoDB + SNS
+aws iam put-role-policy \
+  --role-name DeltaConciergeAlertRole \
+  --policy-name ConciergeAlertAccess \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:PutItem",
+          "dynamodb:Query"
+        ],
+        "Resource": "arn:aws:dynamodb:us-east-1:*:table/ConciergeAlerts"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "sns:Publish",
+        "Resource": "*"
+      }
+    ]
+  }'
+```
+
+### 4. Deploy the Lambda Function
+
+Package and deploy:
+```bash
+cd delta-concierge-alerts
+pip install -r requirements.txt -t package/
+cp -r src/ package/
+cd package && zip -r ../lambda.zip . && cd ..
+
+aws lambda create-function \
+  --function-name DeltaConciergeAlerts \
+  --runtime python3.11 \
+  --role arn:aws:iam::<ACCOUNT_ID>:role/DeltaConciergeAlertRole \
+  --handler src.handlers.lambda_handler.handler \
+  --zip-file fileb://lambda.zip \
+  --timeout 30 \
+  --memory-size 256 \
+  --region us-east-1
+```
+
+### 5. Test with a Real Invocation
+
+```bash
+aws lambda invoke \
+  --function-name DeltaConciergeAlerts \
+  --payload '{
+    "profile": {
+      "skymiles_number": "9876543210",
+      "first_name": "Test",
+      "last_name": "User",
+      "nationality": "IN",
+      "passport_number": "P999999",
+      "passport_expiry": "2026-09-01",
+      "endpoint_arn": "<YOUR_ENDPOINT_ARN>",
+      "visa_records": []
+    },
+    "itinerary": {
+      "confirmation_number": "DL-TEST",
+      "segments": [{
+        "flight_number": "DL999",
+        "origin": "JFK",
+        "destination": "CN",
+        "departure_date": "2026-08-15",
+        "arrival_date": "2026-08-16",
+        "is_layover": false
+      }]
+    },
+    "requirements_override": null
+  }' \
+  response.json
+
+cat response.json
+```
+
+## AWS Resources Required (Real Deployment)
 
 - **DynamoDB table** `ConciergeAlerts` with partition key `skymiles_number` (String) and sort key `alert_id` (String), TTL enabled on `ttl` attribute, and GSI `status-created_at-index` (see [`docs/dynamodb-gsi.md`](docs/dynamodb-gsi.md))
 - **SNS platform application** configured for APNS and/or GCM
