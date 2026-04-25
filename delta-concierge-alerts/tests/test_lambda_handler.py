@@ -160,3 +160,75 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+
+class TestGroupDelegation:
+    """Handler delegates to group_handler when 'travelers' key is present."""
+
+    def test_travelers_key_delegates_to_group_handler(self, endpoint_arn):
+        """Event with 'travelers' key should be routed to group_handler."""
+        event = {
+            "confirmation_number": "GRP-001",
+            "primary_traveler": "1234567890",
+            "segments": [
+                {
+                    "flight_number": "DL100",
+                    "origin": "ATL",
+                    "destination": "DE",
+                    "departure_date": "2026-09-15",
+                    "arrival_date": "2026-09-16",
+                    "is_layover": False,
+                }
+            ],
+            "travelers": [
+                {
+                    "skymiles_number": "1234567890",
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "nationality": "US",
+                    "passport_number": "P999999",
+                    "passport_expiry": "2030-01-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                }
+            ],
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert "traveler_results" in response["body"]
+
+
+class TestRequirementsOverride:
+    """Handler applies requirements_override when provided."""
+
+    def test_override_changes_evaluation(self, endpoint_arn):
+        """Override making DE require visa for US should trigger an alert."""
+        event = _base_event(endpoint_arn)
+        event["profile"]["nationality"] = "US"
+        event["itinerary"]["segments"] = [
+            {
+                "flight_number": "DL200",
+                "origin": "ATL",
+                "destination": "DE",
+                "departure_date": "2026-09-15",
+                "arrival_date": "2026-09-16",
+                "is_layover": False,
+            }
+        ]
+        event["requirements_override"] = {
+            "DE": {
+                "country_code": "DE",
+                "requires_visa": True,
+                "transit_visa_required": False,
+                "passport_validity_months": 3,
+                "visa_exempt_nationalities": [],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["visa_status"] == "CRITICAL"
+        assert response["body"]["alerts_sent"] >= 1
