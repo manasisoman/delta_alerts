@@ -160,3 +160,77 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+    def test_requirements_override_disables_visa(self, endpoint_arn):
+        """Override CN requires_visa=False → no visa alert for CN destination."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "country_code": "CN",
+                "requires_visa": False,
+                "transit_visa_required": False,
+                "passport_validity_months": 6,
+                "visa_exempt_nationalities": [],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["visa_status"] == "OK"
+
+
+class TestGroupDelegation:
+    """Handler delegates to group_handler when event has 'travelers' key."""
+
+    def test_group_event_delegates_to_group_handler(self, endpoint_arn):
+        """Event with travelers key should delegate to group_handler."""
+        event = {
+            "travelers": [
+                {
+                    "skymiles_number": "1234567890",
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "nationality": "US",
+                    "passport_number": "P999999",
+                    "passport_expiry": "2030-01-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                },
+            ],
+            "segments": [
+                {
+                    "flight_number": "DL100",
+                    "origin": "JFK",
+                    "destination": "DE",
+                    "departure_date": "2026-09-15",
+                    "arrival_date": "2026-09-16",
+                    "is_layover": False,
+                },
+            ],
+            "confirmation_number": "DL-GROUP-TEST",
+            "primary_traveler": "1234567890",
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert body["confirmation_number"] == "DL-GROUP-TEST"
+        assert "traveler_results" in body
+        assert body["total_alerts_sent"] >= 0
+
+
+class TestEvaluateItinerary:
+    """The evaluate_itinerary helper reuses handler logic."""
+
+    def test_evaluate_itinerary_returns_handler_response(self, endpoint_arn):
+        """evaluate_itinerary should produce the same result as handler."""
+        from src.handlers.lambda_handler import evaluate_itinerary
+
+        event = _base_event(endpoint_arn)
+
+        response = evaluate_itinerary(event)
+
+        assert response["statusCode"] == 200
+        assert "alerts_sent" in response["body"]
