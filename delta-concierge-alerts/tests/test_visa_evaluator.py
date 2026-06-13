@@ -91,7 +91,7 @@ class TestNoVisaRequired:
             ),
         }
         profile = make_profile(nationality="IN", visa_records=[])
-        segment = make_segment(destination="MX", departure=date(2026, 9, 1))
+        segment = make_segment(destination="MX", departure=date(2030, 9, 1))
         itinerary = make_itinerary(segment)
 
         result = evaluate_visa_requirements(profile, itinerary, reqs)
@@ -106,7 +106,7 @@ class TestLayoverWithoutTransitVisa:
 
     def test_layover_transit_visa_not_required(self, base_requirements):
         profile = make_profile(nationality="IN", visa_records=[])
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1), is_layover=True)
+        segment = make_segment(destination="DE", departure=date(2030, 9, 1), is_layover=True)
         itinerary = make_itinerary(segment)
 
         result = evaluate_visa_requirements(profile, itinerary, base_requirements)
@@ -119,10 +119,10 @@ class TestVisaExpiresOnDepartureDate:
     """Visa expiry equals departure date → WARNING."""
 
     def test_visa_expires_on_departure(self, base_requirements):
-        departure = date(2026, 9, 1)
+        departure = date(2030, 9, 1)
         visa = VisaRecord(
             country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=departure,
+            issue_date=date(2029, 1, 1), expiry_date=departure,
             visa_number="V003",
         )
         profile = make_profile(nationality="IN", visa_records=[visa])
@@ -140,11 +140,11 @@ class TestVisaExpiresWithinWarningWindow:
     """Visa expires within VISA_EXPIRY_WARNING_DAYS after departure → INFO."""
 
     def test_visa_expires_within_warning_days(self, base_requirements):
-        departure = date(2026, 9, 1)
+        departure = date(2030, 9, 1)
         expiry = departure + timedelta(days=VISA_EXPIRY_WARNING_DAYS)
         visa = VisaRecord(
             country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=expiry,
+            issue_date=date(2029, 1, 1), expiry_date=expiry,
             visa_number="V004",
         )
         profile = make_profile(nationality="IN", visa_records=[visa])
@@ -158,11 +158,11 @@ class TestVisaExpiresWithinWarningWindow:
         assert f"within {VISA_EXPIRY_WARNING_DAYS} days of travel" in result.reasons[0]
 
     def test_visa_outside_warning_window_no_alert(self, base_requirements):
-        departure = date(2026, 9, 1)
+        departure = date(2030, 9, 1)
         expiry = departure + timedelta(days=VISA_EXPIRY_WARNING_DAYS + 1)
         visa = VisaRecord(
             country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=expiry,
+            issue_date=date(2029, 1, 1), expiry_date=expiry,
             visa_number="V005",
         )
         profile = make_profile(nationality="IN", visa_records=[visa])
@@ -179,7 +179,7 @@ class TestMaxSeverityConsolidation:
     """Multi-segment itinerary keeps the highest severity across segments."""
 
     def test_critical_not_downgraded_by_info(self, base_requirements):
-        departure = date(2026, 9, 1)
+        departure = date(2030, 9, 1)
 
         # Segment 1: missing visa for CN → CRITICAL
         seg_critical = make_segment(destination="CN", departure=departure, flight_number="DL200")
@@ -188,7 +188,7 @@ class TestMaxSeverityConsolidation:
         jp_expiry = departure + timedelta(days=VISA_EXPIRY_WARNING_DAYS)
         jp_visa = VisaRecord(
             country_code="JP", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=jp_expiry,
+            issue_date=date(2029, 1, 1), expiry_date=jp_expiry,
             visa_number="V006",
         )
         seg_info = make_segment(destination="JP", departure=departure, flight_number="DL300")
