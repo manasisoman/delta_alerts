@@ -160,3 +160,79 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+
+class TestGroupHandlerDelegation:
+    """When event contains 'travelers' key, handler delegates to group_handler."""
+
+    def test_travelers_key_delegates_to_group_handler(self, endpoint_arn):
+        """Event with 'travelers' key triggers group handler path (lines 42-44)."""
+        event = {
+            "confirmation_number": "DL-GROUP-001",
+            "primary_traveler": "1111111111",
+            "segments": [
+                {
+                    "flight_number": "DL300",
+                    "origin": "ATL",
+                    "destination": "DE",
+                    "departure_date": "2026-09-15",
+                    "arrival_date": "2026-09-16",
+                    "is_layover": False,
+                }
+            ],
+            "travelers": [
+                {
+                    "skymiles_number": "1111111111",
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "nationality": "US",
+                    "passport_number": "US123456",
+                    "passport_expiry": "2030-06-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                },
+                {
+                    "skymiles_number": "2222222222",
+                    "first_name": "Bob",
+                    "last_name": "Jones",
+                    "nationality": "IN",
+                    "passport_number": "IN789012",
+                    "passport_expiry": "2030-06-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                },
+            ],
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert body["confirmation_number"] == "DL-GROUP-001"
+        assert "traveler_results" in body
+        assert len(body["traveler_results"]) == 2
+        assert body["total_alerts_sent"] >= 0
+
+
+class TestRequirementsOverride:
+    """When event contains a requirements_override dict, overrides are applied."""
+
+    def test_requirements_override_applied(self, endpoint_arn):
+        """Override requirements for CN triggers visa alert with custom rules (lines 53-54)."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "country_code": "CN",
+                "requires_visa": True,
+                "transit_visa_required": True,
+                "passport_validity_months": 6,
+                "visa_exempt_nationalities": [],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert body["visa_status"] == "CRITICAL"
+        assert body["alerts_sent"] >= 1
