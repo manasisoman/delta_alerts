@@ -6,7 +6,7 @@ import pytest
 
 import src.services.alert_store as alert_store_mod
 import src.services.notification_service as notif_mod
-from src.handlers.lambda_handler import handler
+from src.handlers.lambda_handler import evaluate_itinerary, handler
 
 
 @pytest.fixture(autouse=True)
@@ -160,3 +160,91 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+
+class TestGroupDelegation:
+    """When the event contains a 'travelers' key, handler delegates to group_handler."""
+
+    def test_travelers_key_delegates_to_group_handler(self, endpoint_arn):
+        """Event with 'travelers' should be routed to group_handler and return group fields."""
+        event = {
+            "confirmation_number": "GRP-001",
+            "primary_traveler": "1234567890",
+            "segments": [
+                {
+                    "flight_number": "DL300",
+                    "origin": "ATL",
+                    "destination": "DE",
+                    "departure_date": "2026-09-15",
+                    "arrival_date": "2026-09-16",
+                    "is_layover": False,
+                }
+            ],
+            "travelers": [
+                {
+                    "skymiles_number": "1234567890",
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "nationality": "US",
+                    "passport_number": "P999999",
+                    "passport_expiry": "2030-01-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                }
+            ],
+            "requirements_override": None,
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert "confirmation_number" in body
+        assert "traveler_results" in body
+        assert body["confirmation_number"] == "GRP-001"
+
+
+class TestRequirementsOverride:
+    """When requirements_override contains data, overridden rules replace defaults."""
+
+    def test_override_removes_visa_requirement(self, endpoint_arn):
+        """Override CN to requires_visa=False → no visa alert for CN destination."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "country_code": "CN",
+                "requires_visa": False,
+                "transit_visa_required": False,
+                "passport_validity_months": 6,
+                "visa_exempt_nationalities": [],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["visa_status"] == "OK"
+
+
+class TestEvaluateItinerary:
+    """evaluate_itinerary delegates to handler with context=None."""
+
+    def test_evaluate_itinerary_delegates(self, endpoint_arn):
+        """evaluate_itinerary should produce the same result as handler(event, None)."""
+        event = _base_event(endpoint_arn)
+        event["profile"]["nationality"] = "US"
+        event["itinerary"]["segments"] = [
+            {
+                "flight_number": "DL200",
+                "origin": "ATL",
+                "destination": "DE",
+                "departure_date": "2026-09-15",
+                "arrival_date": "2026-09-16",
+                "is_layover": False,
+            }
+        ]
+
+        response = evaluate_itinerary(event)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["alerts_sent"] == 0
