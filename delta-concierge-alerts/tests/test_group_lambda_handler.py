@@ -352,7 +352,7 @@ class TestGroupHandlerRequirementsOverride:
         assert body["traveler_results"][0]["passport_status"] == "OK"
 
     def test_override_with_partial_fields(self, arns):
-        """Override with only some fields uses defaults for missing ones."""
+        """Override with only some fields uses handler defaults (not original country values) for missing ones."""
         event = _base_group_event(arns["endpoint_arn"])
         event["requirements_override"] = {
             "CN": {
