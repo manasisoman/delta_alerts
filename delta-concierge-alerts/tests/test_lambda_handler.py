@@ -160,3 +160,92 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+
+def _group_event(endpoint_arn: str, **overrides) -> dict:
+    """Build a valid group Lambda event (contains a ``travelers`` key)."""
+    event = {
+        "confirmation_number": "DL-GROUP",
+        "primary_traveler": "1111111111",
+        "travelers": [
+            {
+                "skymiles_number": "1111111111",
+                "first_name": "Group",
+                "last_name": "Lead",
+                "nationality": "IN",
+                "passport_number": "P111111",
+                "passport_expiry": "2030-01-01",
+                "endpoint_arn": endpoint_arn,
+                "visa_records": [],
+            }
+        ],
+        "segments": [
+            {
+                "flight_number": "DL100",
+                "origin": "JFK",
+                "destination": "CN",
+                "departure_date": "2026-09-15",
+                "arrival_date": "2026-09-16",
+                "is_layover": False,
+            }
+        ],
+        "requirements_override": None,
+    }
+    event.update(overrides)
+    return event
+
+
+class TestGroupDelegation:
+    """When the event contains a ``travelers`` key it delegates to group_handler."""
+
+    def test_travelers_key_delegates_to_group_handler(self, endpoint_arn):
+        """A group-shaped event returns the group handler's response shape."""
+        event = _group_event(endpoint_arn)
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert body["confirmation_number"] == "DL-GROUP"
+        assert "traveler_results" in body
+        assert len(body["traveler_results"]) == 1
+        assert body["traveler_results"][0]["skymiles_number"] == "1111111111"
+
+
+class TestRequirementsOverride:
+    """The ``requirements_override`` payload overrides default country requirements."""
+
+    def test_override_disables_visa_requirement(self, endpoint_arn):
+        """Overriding CN with requires_visa=False clears the otherwise-CRITICAL visa alert."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "country_code": "CN",
+                "requires_visa": False,
+                "transit_visa_required": False,
+                "passport_validity_months": 6,
+                "visa_exempt_nationalities": [],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = response["body"]
+        assert body["visa_status"] == "OK"
+        assert body["alerts_sent"] == 0
+
+    def test_override_exempts_nationality(self, endpoint_arn):
+        """Overriding CN to exempt the traveler's nationality clears the visa alert."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "requires_visa": True,
+                "visa_exempt_nationalities": ["IN"],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["visa_status"] == "OK"
