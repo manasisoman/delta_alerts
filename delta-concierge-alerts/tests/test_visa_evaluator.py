@@ -1,6 +1,6 @@
 """Critical-path tests for the visa evaluator."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from src.evaluators.visa_evaluator import evaluate_visa_requirements
 from src.models.types import AlertSeverity, VisaRecord
@@ -47,13 +47,15 @@ class TestVisaExpiresBeforeTravel:
     """Visa expires before departure (but after today) → CRITICAL."""
 
     def test_visa_expires_before_departure(self, base_requirements):
+        expiry = date.today() + timedelta(days=30)
+        departure = date.today() + timedelta(days=90)
         visa = VisaRecord(
             country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=date(2026, 7, 1),
+            issue_date=date(2025, 1, 1), expiry_date=expiry,
             visa_number="V002",
         )
         profile = make_profile(nationality="IN", visa_records=[visa])
-        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
+        segment = make_segment(destination="CN", departure=departure)
         itinerary = make_itinerary(segment)
 
         result = evaluate_visa_requirements(profile, itinerary, base_requirements)
