@@ -15,6 +15,7 @@ import pytest
 
 from src.models.types import (
     FlightSegment,
+    GroupItinerary,
     Itinerary,
     SkyMilesProfile,
     TravelDocRequirements,
@@ -77,6 +78,21 @@ def make_itinerary(
     return Itinerary(
         confirmation_number=confirmation,
         segments=list(segments),
+    )
+
+
+def make_group(
+    *travelers: SkyMilesProfile,
+    segments: list[FlightSegment] | None = None,
+    confirmation: str = "DL-GROUP",
+    primary_traveler: str = "9999999",
+) -> GroupItinerary:
+    """Helper to build a GroupItinerary with sensible defaults."""
+    return GroupItinerary(
+        confirmation_number=confirmation,
+        segments=segments if segments is not None else [make_segment()],
+        travelers=list(travelers),
+        primary_traveler=primary_traveler,
     )
 
 
