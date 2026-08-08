@@ -47,7 +47,31 @@ def base_requirements() -> dict[str, TravelDocRequirements]:
             passport_validity_months=6,
             visa_exempt_nationalities=["US", "GB"],
         ),
+        "CL": TravelDocRequirements(
+            country_code="CL",
+            requires_visa=False,
+            transit_visa_required=False,
+            passport_validity_months=6,
+            visa_exempt_nationalities=[],
+        ),
     }
+
+
+def make_visa(
+    country_code: str = "CN",
+    expiry: date = date(2030, 1, 1),
+    issue: date = date(2025, 1, 1),
+    visa_type: str = "TOURIST",
+    visa_number: str = "V000",
+) -> VisaRecord:
+    """Helper to build a VisaRecord with sensible defaults."""
+    return VisaRecord(
+        country_code=country_code,
+        visa_type=visa_type,
+        issue_date=issue,
+        expiry_date=expiry,
+        visa_number=visa_number,
+    )
 
 
 def make_profile(
