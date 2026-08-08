@@ -15,6 +15,7 @@ import pytest
 
 from src.models.types import (
     FlightSegment,
+    GroupItinerary,
     Itinerary,
     SkyMilesProfile,
     TravelDocRequirements,
@@ -55,12 +56,15 @@ def make_profile(
     passport_number: str | None = "P123456",
     passport_expiry: date | None = date(2030, 1, 1),
     visa_records: list[VisaRecord] | None = None,
+    skymiles_number: str = "9999999",
+    first_name: str = "Test",
+    last_name: str = "User",
 ) -> SkyMilesProfile:
     """Helper to build a SkyMilesProfile with sensible defaults."""
     return SkyMilesProfile(
-        skymiles_number="9999999",
-        first_name="Test",
-        last_name="User",
+        skymiles_number=skymiles_number,
+        first_name=first_name,
+        last_name=last_name,
         nationality=nationality,
         passport_number=passport_number,
         passport_expiry=passport_expiry,
@@ -96,4 +100,23 @@ def make_segment(
         departure_date=departure,
         arrival_date=arrival,
         is_layover=is_layover,
+    )
+
+
+def make_group(
+    travelers: list[SkyMilesProfile],
+    segments: list[FlightSegment] | None = None,
+    confirmation: str = "DL-GROUP",
+    primary_traveler: str | None = None,
+) -> GroupItinerary:
+    """Helper to build a GroupItinerary with sensible defaults."""
+    return GroupItinerary(
+        confirmation_number=confirmation,
+        segments=list(segments) if segments is not None else [make_segment()],
+        travelers=travelers,
+        primary_traveler=(
+            primary_traveler
+            if primary_traveler is not None
+            else (travelers[0].skymiles_number if travelers else "")
+        ),
     )
