@@ -4,6 +4,7 @@ import boto3
 import moto
 import pytest
 
+import src.handlers.group_lambda_handler as group_handler_mod
 import src.services.alert_store as alert_store_mod
 import src.services.notification_service as notif_mod
 from src.handlers.lambda_handler import handler
@@ -95,6 +96,50 @@ def _base_event(endpoint_arn: str, **overrides) -> dict:
         if key in event["profile"]:
             event["profile"][key] = val
     return event
+
+
+class TestGroupItineraryRouting:
+    """Group itinerary events are delegated without entering the single-traveler flow."""
+
+    def test_travelers_event_delegates_to_group_handler(self, monkeypatch):
+        event = {"travelers": []}
+        context = object()
+        expected_response = {"statusCode": 202, "body": {"delegated": True}}
+        delegated = {}
+
+        def fake_group_handler(received_event, received_context):
+            delegated["event"] = received_event
+            delegated["context"] = received_context
+            return expected_response
+
+        monkeypatch.setattr(group_handler_mod, "group_handler", fake_group_handler)
+
+        response = handler(event, context)
+
+        assert response == expected_response
+        assert delegated == {"event": event, "context": context}
+
+
+class TestRequirementsOverrides:
+    """Per-event country requirements replace the defaults used by both evaluators."""
+
+    def test_override_can_disable_destination_visa_requirement(self, endpoint_arn):
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "requires_visa": False,
+                "passport_validity_months": 6,
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"] == {
+            "alerts_sent": 0,
+            "passport_status": "OK",
+            "visa_status": "OK",
+        }
 
 
 class TestHandlerEndToEnd:
