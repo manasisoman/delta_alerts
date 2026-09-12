@@ -1,12 +1,20 @@
 """Critical-path tests for the Lambda handler end-to-end flow."""
 
+from datetime import date, datetime, timedelta
+
 import boto3
 import moto
 import pytest
 
 import src.services.alert_store as alert_store_mod
 import src.services.notification_service as notif_mod
-from src.handlers.lambda_handler import handler
+from src.handlers.lambda_handler import (
+    _compute_ttl,
+    _parse_itinerary,
+    evaluate_itinerary,
+    handler,
+)
+from src.models.types import Itinerary
 
 
 @pytest.fixture(autouse=True)
@@ -160,3 +168,180 @@ class TestHandlerEndToEnd:
         assert response["statusCode"] == 200
         assert response["body"]["passport_status"] == "CRITICAL"
         assert response["body"]["alerts_sent"] >= 1
+
+
+class TestGroupDelegation:
+    """Events containing a ``travelers`` key are routed to the group handler."""
+
+    def test_travelers_key_delegates_to_group_handler(self, endpoint_arn):
+        """Group payload with a clean US traveler → group response shape, no alerts."""
+        event = {
+            "confirmation_number": "DL-GROUP",
+            "primary_traveler": "1111111111",
+            "travelers": [
+                {
+                    "skymiles_number": "1111111111",
+                    "first_name": "Group",
+                    "last_name": "Lead",
+                    "nationality": "US",
+                    "passport_number": "P111111",
+                    "passport_expiry": "2030-01-01",
+                    "endpoint_arn": endpoint_arn,
+                    "visa_records": [],
+                }
+            ],
+            "segments": [
+                {
+                    "flight_number": "DL300",
+                    "origin": "ATL",
+                    "destination": "DE",
+                    "departure_date": "2026-09-15",
+                    "arrival_date": "2026-09-16",
+                    "is_layover": False,
+                }
+            ],
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        assert response["body"]["confirmation_number"] == "DL-GROUP"
+        assert response["body"]["total_alerts_sent"] == 0
+        assert response["body"]["group_severity"] == "OK"
+        assert alert_store_mod.table.scan()["Items"] == []
+
+
+class TestRequirementsOverride:
+    """``requirements_override`` replaces the default rules for a country."""
+
+    def test_override_marks_nationality_visa_exempt(self, endpoint_arn):
+        """Overriding CN to exempt IN nationals clears the visa alert."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {
+            "CN": {
+                "requires_visa": True,
+                "transit_visa_required": True,
+                "passport_validity_months": 6,
+                "visa_exempt_nationalities": ["IN"],
+            }
+        }
+
+        response = handler(event, None)
+
+        assert response["body"]["visa_status"] == "OK"
+        assert response["body"]["alerts_sent"] == 0
+
+    def test_override_uses_defaults_for_missing_fields(self, endpoint_arn):
+        """An empty override dict falls back to requires_visa=True → CRITICAL."""
+        event = _base_event(endpoint_arn)
+        event["requirements_override"] = {"CN": {}}
+
+        response = handler(event, None)
+
+        assert response["body"]["visa_status"] == "CRITICAL"
+        assert response["body"]["alerts_sent"] == 1
+
+    def test_override_adds_unknown_country(self, endpoint_arn):
+        """Override for a country not in defaults with requires_visa=False → OK."""
+        event = _base_event(endpoint_arn)
+        event["itinerary"]["segments"][0]["destination"] = "ZZ"
+        event["requirements_override"] = {"ZZ": {"requires_visa": False}}
+
+        response = handler(event, None)
+
+        assert response["body"]["visa_status"] == "OK"
+        assert response["body"]["alerts_sent"] == 0
+
+
+class TestVisaRecordParsing:
+    """Visa records on the profile are deserialized and used by the evaluator."""
+
+    def test_valid_visa_record_clears_visa_alert(self, endpoint_arn):
+        """A far-future CN visa on file → no visa alert."""
+        event = _base_event(endpoint_arn)
+        event["profile"]["visa_records"] = [
+            {
+                "country_code": "CN",
+                "visa_type": "TOURIST",
+                "issue_date": "2025-01-01",
+                "expiry_date": "2030-01-01",
+                "visa_number": "V123",
+            }
+        ]
+
+        response = handler(event, None)
+
+        assert response["body"]["visa_status"] == "OK"
+        assert response["body"]["alerts_sent"] == 0
+
+    def test_expired_visa_record_triggers_critical(self, endpoint_arn):
+        """An already-expired CN visa → CRITICAL visa alert."""
+        event = _base_event(endpoint_arn)
+        event["profile"]["visa_records"] = [
+            {
+                "country_code": "CN",
+                "visa_type": "TOURIST",
+                "issue_date": "2015-01-01",
+                "expiry_date": "2020-01-01",
+                "visa_number": "V123",
+            }
+        ]
+
+        response = handler(event, None)
+
+        assert response["body"]["visa_status"] == "CRITICAL"
+        assert response["body"]["alerts_sent"] == 1
+
+
+class TestPersistedAlertFields:
+    """Persisted alert records carry the correct TTL, status, and itinerary ref."""
+
+    def test_ttl_is_thirty_days_after_last_arrival(self, endpoint_arn):
+        """TTL epoch equals midnight of latest arrival_date + 30 days."""
+        event = _base_event(endpoint_arn)
+        event["itinerary"]["segments"].append(
+            {
+                "flight_number": "DL101",
+                "origin": "CN",
+                "destination": "JP",
+                "departure_date": "2026-09-20",
+                "arrival_date": "2026-09-21",
+                "is_layover": False,
+            }
+        )
+
+        handler(event, None)
+
+        items = alert_store_mod.table.scan()["Items"]
+        assert len(items) >= 1
+        expected = _compute_ttl(_parse_itinerary(event["itinerary"]))
+        expected_dt = datetime.combine(date(2026, 9, 21), datetime.min.time()) + timedelta(days=30)
+        assert expected == int(expected_dt.timestamp())
+        assert all(int(i["ttl"]) == expected for i in items)
+        assert all(i["status"] == "ACTIVE" for i in items)
+        assert all(i["itinerary_ref"] == "DL-TEST" for i in items)
+
+    def test_compute_ttl_with_no_segments_uses_today(self):
+        """Empty itinerary → TTL is 30 days from today."""
+        itinerary = Itinerary(confirmation_number="DL-EMPTY", segments=[])
+
+        ttl = _compute_ttl(itinerary)
+
+        expected_dt = datetime.combine(date.today(), datetime.min.time()) + timedelta(days=30)
+        assert ttl == int(expected_dt.timestamp())
+
+
+class TestEvaluateItinerary:
+    """``evaluate_itinerary`` is a thin wrapper around ``handler``."""
+
+    def test_returns_same_response_as_handler(self, endpoint_arn):
+        event = _base_event(endpoint_arn)
+        event["profile"]["nationality"] = "US"
+        event["itinerary"]["segments"][0]["destination"] = "DE"
+
+        response = evaluate_itinerary(event)
+
+        assert response == {
+            "statusCode": 200,
+            "body": {"alerts_sent": 0, "passport_status": "OK", "visa_status": "OK"},
+        }
