@@ -49,11 +49,11 @@ class TestVisaExpiresBeforeTravel:
     def test_visa_expires_before_departure(self, base_requirements):
         visa = VisaRecord(
             country_code="CN", visa_type="TOURIST",
-            issue_date=date(2025, 1, 1), expiry_date=date(2026, 7, 1),
+            issue_date=date(2029, 1, 1), expiry_date=date(2030, 7, 1),
             visa_number="V002",
         )
         profile = make_profile(nationality="IN", visa_records=[visa])
-        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
+        segment = make_segment(destination="CN", departure=date(2030, 9, 1))
         itinerary = make_itinerary(segment)
 
         result = evaluate_visa_requirements(profile, itinerary, base_requirements)
