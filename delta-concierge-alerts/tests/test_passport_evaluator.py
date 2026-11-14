@@ -13,8 +13,8 @@ class TestPassportBelowCountryMinimum:
 
     def test_below_3_month_schengen_requirement(self, base_requirements):
         # Passport expires 2 months after departure to Germany (needs 3)
-        profile = make_profile(passport_expiry=date(2026, 10, 15))
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1))
+        profile = make_profile(passport_expiry=date(2030, 10, 15))
+        segment = make_segment(destination="DE", departure=date(2030, 9, 1), arrival=date(2030, 9, 2))
         itinerary = make_itinerary(segment)
 
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
@@ -25,8 +25,8 @@ class TestPassportBelowCountryMinimum:
 
     def test_below_6_month_requirement(self, base_requirements):
         # Passport expires 4 months after departure to China (needs 6)
-        profile = make_profile(passport_expiry=date(2027, 1, 1))
-        segment = make_segment(destination="CN", departure=date(2026, 9, 1))
+        profile = make_profile(passport_expiry=date(2031, 1, 1))
+        segment = make_segment(destination="CN", departure=date(2030, 9, 1), arrival=date(2030, 9, 2))
         itinerary = make_itinerary(segment)
 
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
@@ -41,8 +41,8 @@ class TestPassportValid:
 
     def test_no_alert_when_passport_is_valid(self, base_requirements):
         # Passport valid for 4+ years — well above any threshold
-        profile = make_profile(passport_expiry=date(2030, 6, 1))
-        segment = make_segment(destination="DE", departure=date(2026, 9, 1))
+        profile = make_profile(passport_expiry=date(2034, 6, 1))
+        segment = make_segment(destination="DE", departure=date(2030, 9, 1), arrival=date(2030, 9, 2))
         itinerary = make_itinerary(segment)
 
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
@@ -58,9 +58,13 @@ class TestSeverityConsolidation:
     def test_critical_overrides_warning(self, base_requirements):
         # Segment 1: DE → passport under 3-month min → CRITICAL
         # Segment 2: CN → passport expires before departure → CRITICAL
-        profile = make_profile(passport_expiry=date(2026, 10, 15))
-        seg_de = make_segment(destination="DE", departure=date(2026, 9, 1), flight_number="DL100")
-        seg_cn = make_segment(destination="CN", departure=date(2026, 11, 1), flight_number="DL200")
+        profile = make_profile(passport_expiry=date(2030, 10, 15))
+        seg_de = make_segment(
+            destination="DE", departure=date(2030, 9, 1), arrival=date(2030, 9, 2), flight_number="DL100"
+        )
+        seg_cn = make_segment(
+            destination="CN", departure=date(2030, 11, 1), arrival=date(2030, 11, 2), flight_number="DL200"
+        )
         itinerary = make_itinerary(seg_de, seg_cn)
 
         result = evaluate_passport_expiry(profile, itinerary, base_requirements)
